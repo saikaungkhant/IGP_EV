@@ -102,7 +102,7 @@ class RegistrationCompleteScreen extends StatelessWidget {
                         ..onTap = () {
                           Navigator.pushAndRemoveUntil(
                             context,
-                            MaterialPageRoute(builder: (context) => HomeMap()),
+                            MaterialPageRoute(builder: (context) => HomeMapScreen()),
                                 (Route<dynamic> route) => false,
                           );
                         },

@@ -1,39 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:location/location.dart';
 
-void main() => runApp(const HomeMap());
-
-class HomeMap extends StatelessWidget {
-  const HomeMap({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Maps',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: const HomeMapScreen(),
-    );
-  }
-}
-
 class HomeMapScreen extends StatefulWidget {
-  const HomeMapScreen({super.key});
-
   @override
   State<HomeMapScreen> createState() => _HomeMapScreenState();
 }
 
 class _HomeMapScreenState extends State<HomeMapScreen> {
-  GoogleMapController? mapController;
+  final Set<Marker> _markers = {};
+  late GoogleMapController mapController;
+  late mongo.Db db;
   Location location = Location();
 
   @override
   void initState() {
     super.initState();
     _checkLocationPermission();
+    _fetchChargingStations();
   }
 
   void _checkLocationPermission() async {
@@ -64,56 +49,63 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     });
   }
 
-  void _onMapCreated(GoogleMapController controller) {
-    mapController = controller;
+  void _fetchChargingStations() async {
+    db = mongo.Db('mongodb+srv://sai_app_connection:sai@igpelectricalvehiclepro.2ftpj5l.mongodb.net/IgpElectricalVehicleProject?retryWrites=true&w=majority');
+    await db.open();
+    var collection = db.collection('Stations');
+    var chargingStations = await collection.find(mongo.where.exists('ChargeDeviceName').fields([
+      'ChargeDeviceName',
+      'ChargeDeviceLocation.Latitude',
+      'ChargeDeviceLocation.Longitude',
+    ])).toList();
+
+    setState(() {
+      _markers.clear();
+      for (var station in chargingStations) {
+        final marker = Marker(
+          markerId: MarkerId(station['_id'].toString()),
+          position: LatLng(
+            station['ChargeDeviceLocation']['Latitude'],
+            station['ChargeDeviceLocation']['Longitude'],
+          ),
+          infoWindow: InfoWindow(title: station['ChargeDeviceName']),
+        );
+        _markers.add(marker);
+      }
+    });
+
+    await db.close();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Search Charging Stations'),
-        actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              // Implement your search functionality here
-            },
-          ),
-        ],
-      ),
+      //... (the rest of your Scaffold code)
       body: GoogleMap(
         onMapCreated: _onMapCreated,
         myLocationEnabled: true,
-        myLocationButtonEnabled: false,
-        initialCameraPosition: const CameraPosition(
-          target: LatLng(0.0, 0.0),
+        myLocationButtonEnabled: true,
+        initialCameraPosition: CameraPosition(
+          target: LatLng(0.0, 0.0), // Default location, will update to current location upon retrieval
           zoom: 11.0,
         ),
+        markers: _markers,
       ),
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 6.0,
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
-            IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () {
-                // Handle menu button press
-              },
-            ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () {
-                // Handle more button press
-              },
-            ),
-          ],
-        ),
-      ),
+      //... (the rest of your Scaffold code)
     );
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    mapController = controller;
+    location.onLocationChanged.listen((LocationData currentLocation) {
+      mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(currentLocation.latitude!, currentLocation.longitude!),
+            zoom: 14.0,
+          ),
+        ),
+      );
+    });
   }
 }
